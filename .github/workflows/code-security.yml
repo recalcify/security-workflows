@@ -1,0 +1,58 @@
+name: Code Security Scanning
+
+on:
+  push:
+      branches: [ main, develop ]
+        pull_request:
+            branches: [ main, develop ]
+
+            jobs:
+              security-scan:
+                  runs-on: ubuntu-latest
+                      permissions:
+                            contents: read
+                                  security-events: write
+
+                                      steps:
+                                            - name: Checkout code
+                                                    uses: actions/checkout@v4
+
+                                                          - name: Run Trivy vulnerability scanner
+                                                                  uses: aquasecurity/trivy-action@master
+                                                                          with:
+                                                                                    scan-type: 'fs'
+                                                                                              scan-ref: '.'
+                                                                                                        format: 'sarif'
+                                                                                                                  output: 'trivy-results.sarif'
+                                                                                                                  
+                                                                                                                        - name: Upload Trivy results to GitHub Security
+                                                                                                                                uses: github/codeql-action/upload-sarif@v2
+                                                                                                                                        with:
+                                                                                                                                                  sarif_file: 'trivy-results.sarif'
+                                                                                                                                                  
+                                                                                                                                                        - name: Run git-secrets check
+                                                                                                                                                                run: |
+                                                                                                                                                                          sudo apt-get update
+                                                                                                                                                                                    sudo apt-get install -y git-secrets
+                                                                                                                                                                                              git secrets --register-aws --global
+                                                                                                                                                                                                        git secrets --scan
+                                                                                                                                                                                                        
+                                                                                                                                                                                                              - name: Check for common malicious patterns
+                                                                                                                                                                                                                      run: |
+                                                                                                                                                                                                                                # Check for eval() usage
+                                                                                                                                                                                                                                          if grep -r "eval(" . --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" 2>/dev/null | grep -v node_modules | grep -v ".git"; then
+                                                                                                                                                                                                                                                      echo "WARNING: Found eval() usage - potential security risk"
+                                                                                                                                                                                                                                                                  exit 1
+                                                                                                                                                                                                                                                                            fi
+                                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                # Check for dangerous exec patterns
+                                                                                                                                                                                                                                                                                                          if grep -r "exec(" . --include="*.py" --include="*.js" --include="*.ts" 2>/dev/null | grep -v node_modules | grep -v ".git"; then
+                                                                                                                                                                                                                                                                                                                      echo "WARNING: Found exec() usage - verify it's safe"
+                                                                                                                                                                                                                                                                                                                                  exit 1
+                                                                                                                                                                                                                                                                                                                                            fi
+                                                                                                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                                                                                # Check for SQL injection patterns
+                                                                                                                                                                                                                                                                                                                                                                          if grep -r "raw_input\|input(" . --include="*.py" 2>/dev/null | grep -v ".git"; then
+                                                                                                                                                                                                                                                                                                                                                                                      echo "WARNING: Review user input handling"
+                                                                                                                                                                                                                                                                                                                                                                                                  exit 1
+                                                                                                                                                                                                                                                                                                                                                                                                            fi
